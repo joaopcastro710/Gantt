@@ -13,11 +13,9 @@ class DatabaseSeeder extends Seeder
      */
     public function run(): void
     {
-        // User::factory(10)->create();
-
-        User::factory()->create([
-            'name' => 'Test User',
-            'email' => 'test@example.com',
-        ]);
+        $path = base_path('database/gantt-seed.sql');
+        $sql = file_get_contents($path);
+        DB::unprepared($sql);
+        $this->command->info('Database seeded!');
     }
 }
