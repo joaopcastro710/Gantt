@@ -1,6 +1,6 @@
 -- Create the database if it doesn't exist
-CREATE DATABASE IF NOT EXISTS gantt;
-USE gantt;
+CREATE DATABASE IF NOT EXISTS laravel;
+USE laravel;
 
 -- Drop old table if it exists
 DROP TABLE IF EXISTS task;

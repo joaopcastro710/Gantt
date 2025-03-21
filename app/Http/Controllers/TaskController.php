@@ -8,9 +8,14 @@ use Illuminate\Support\Facades\Log;
 
 class TaskController extends Controller 
 {
-    public function index() {
-        $tasks = Task::all();
-        return view('tasks.index', compact('tasks'));
+    public function index()
+    {
+        try {
+            $tasks = Task::all();
+            return response()->json($tasks, 200);
+        } catch (\Exception $e) {
+            return response()->json(['error' => $e->getMessage()], 500);
+        }
     }
 
     public function create(Request $request) {
@@ -49,10 +54,11 @@ class TaskController extends Controller
         return redirect()->route('tasks.index');
     }
 
-    public function delete($id) {
+    public function destroy($id) {
         $task = Task::findOrFail($id);
         $task->delete();
-
-        return redirect()->route('tasks.index');
+    
+        return response()->json(['message' => 'Task deleted successfully.']);
     }
+    
 }

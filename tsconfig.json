@@ -1,24 +1,21 @@
 {
-    "compilerOptions": {
-      "target": "es6",
-      "module": "commonjs",
-      "strict": true,
-      "jsx": "preserve",
-      "moduleResolution": "node",
-      "esModuleInterop": true,
-      "skipLibCheck": true,
-      "forceConsistentCasingInFileNames": true,
-      "baseUrl": "./resources/js",
-      "paths": {
-        "@/*": ["*"]
-      }
-    },
-    "include": [
-      "resources/js/**/*.ts",
-      "resources/js/**/*.vue"
-    ],
-    "exclude": [
-      "node_modules",
-      "public"
-    ]
-  }
+  "compilerOptions": {
+    "target": "ESNext",
+    "module": "ESNext",
+    "moduleResolution": "Node",
+    "strict": true,
+    "jsx": "preserve",
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "allowJs": true
+  },
+  "include": [
+    "./resources/js/**/*.js",
+    "./resources/js/**/*.vue"
+  ],
+  "exclude": [
+    "node_modules",
+    "public"
+  ]
+}
