@@ -27,7 +27,38 @@ class DatabaseSeeder extends Seeder
                 'created_at' => now(),
                 'updated_at' => now(),
             ],
-            // Add more tasks here...
+            [
+                'title' => 'Development',
+                'start_date' => Carbon::parse('2025-04-01'),
+                'end_date' => Carbon::parse('2025-04-15'),
+                'deadline' => Carbon::parse('2025-04-15'),
+                'created_at' => now(),
+                'updated_at' => now(),
+            ],
+            [
+                'title' => 'Testing',
+                'start_date' => Carbon::parse('2025-04-16'),
+                'end_date' => Carbon::parse('2025-04-20'),
+                'deadline' => Carbon::parse('2025-04-20'),
+                'created_at' => now(),
+                'updated_at' => now(),
+            ],
+            [
+                'title' => 'Deployment',
+                'start_date' => Carbon::parse('2025-04-21'),
+                'end_date' => Carbon::parse('2025-04-25'),
+                'deadline' => Carbon::parse('2025-04-25'),
+                'created_at' => now(),
+                'updated_at' => now(),
+            ],
+            [
+                'title' => 'Review',
+                'start_date' => Carbon::parse('2025-04-26'),
+                'end_date' => Carbon::parse('2025-04-30'),
+                'deadline' => Carbon::parse('2025-04-30'),
+                'created_at' => now(),
+                'updated_at' => now(),
+            ],
         ]);
     }
 }
