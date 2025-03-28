@@ -2,66 +2,55 @@
 
 namespace App\Http\Controllers;
 
-use Illuminate\Http\Request;
 use App\Models\Task;
-use Illuminate\Support\Facades\Log;
-use Illuminate\Http\JsonResponse;
-use Illuminate\Support\Facades\Validator;
+use Illuminate\Http\Request;
 
-
-class TaskController extends Controller 
+class TaskController extends Controller
 {
+    // Retorna todas as tarefas
     public function index()
     {
-        try {
-            $tasks = Task::all();
-            return response()->json($tasks, 200);
-        } catch (\Exception $e) {
-            return response()->json(['error' => $e->getMessage()], 500);
-        }
+        return response()->json(Task::all());
     }
 
-    public function create(Request $request) {
-        $request->validate([
+    // Cria uma nova tarefa
+    public function store(Request $request)
+    {
+        $validated = $request->validate([
             'title' => 'required|string|max:255',
             'start_date' => 'required|date',
             'end_date' => 'required|date',
             'deadline' => 'required|date',
         ]);
 
-        $task = new Task();
-        $task->title = $request->title;
-        $task->start_date = $request->start_date;
-        $task->end_date = $request->end_date;
-        $task->deadline = $request->deadline;
-        $task->save();
+        $task = Task::create($validated);
 
-        return redirect()->route('tasks.index');
+        return response()->json($task, 201);
     }
 
-    public function update(Request $request, $id) {
-        $request->validate([
-            'title' => 'required|string|max:255',
-            'start_date' => 'required|date',
-            'end_date' => 'required|date',
-            'deadline' => 'required|date',
-        ]);
-
+    // Atualiza uma tarefa
+    public function update(Request $request, $id)
+    {
         $task = Task::findOrFail($id);
-        $task->title = $request->title;
-        $task->start_date = $request->start_date;
-        $task->end_date = $request->end_date;
-        $task->deadline = $request->deadline;
-        $task->save();
 
-        return redirect()->route('tasks.index');
+        $validated = $request->validate([
+            'title' => 'required|string|max:255',
+            'start_date' => 'required|date',
+            'end_date' => 'required|date',
+            'deadline' => 'required|date',
+        ]);
+
+        $task->update($validated);
+
+        return response()->json($task);
     }
 
-    public function destroy($id) {
+    // Apaga uma tarefa
+    public function destroy($id)
+    {
         $task = Task::findOrFail($id);
         $task->delete();
-    
-        return response()->json(['message' => 'Task deleted successfully.']);
+
+        return response()->json(['message' => 'Tarefa eliminada com sucesso.']);
     }
-    
 }
