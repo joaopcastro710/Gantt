@@ -88,7 +88,7 @@ export default defineComponent({
     const newTask = ref({ title: '', start_date: '', end_date: '', deadline: '' });
     const editingTask = ref<Task | null>(null);
 
-    const colorScale = d3.scaleOrdinal(d3.schemeCategory10);
+    const colorScale = d3.scaleOrdinal(d3.schemeTableau10);
 
     const fetchTasks = async () => {
       try {
@@ -104,21 +104,13 @@ export default defineComponent({
       try {
         await axios.post('http://127.0.0.1:8000/api/tasks', newTask.value);
         showCreateModal.value = false;
-        successMessage.value = '✅ Tarefa criada com sucesso!';
+        successMessage.value = '✅ Tarefa criada!';
         newTask.value = { title: '', start_date: '', end_date: '', deadline: '' };
         await fetchTasks();
         setTimeout(() => successMessage.value = '', 3000);
       } catch (error) {
         console.error("Erro ao criar tarefa:", error);
       }
-    };
-
-    const startEdit = (task: Task) => {
-      editingTask.value = { ...task };
-    };
-
-    const cancelEdit = () => {
-      editingTask.value = null;
     };
 
     const updateTask = async () => {
@@ -134,15 +126,8 @@ export default defineComponent({
       }
     };
 
-    const deleteTask = async (id: number) => {
-      try {
-        await axios.delete(`http://127.0.0.1:8000/api/tasks/${id}`);
-        successMessage.value = '🗑️ Tarefa eliminada!';
-        await fetchTasks();
-        setTimeout(() => successMessage.value = '', 3000);
-      } catch (error) {
-        console.error("Erro ao apagar tarefa:", error);
-      }
+    const cancelEdit = () => {
+      editingTask.value = null;
     };
 
     const drawChart = (data: Task[]) => {
@@ -162,6 +147,8 @@ export default defineComponent({
         .attr("transform", `translate(${margin.left},${margin.top})`);
 
       const parseDate = d3.timeParse("%Y-%m-%d %H:%M:%S");
+      const formatDate = d3.timeFormat("%Y-%m-%d %H:%M:%S");
+
       const tasksParsed = data.map(d => ({
         ...d,
         start: parseDate(d.start_date)!,
@@ -182,20 +169,91 @@ export default defineComponent({
         .attr("transform", `translate(0, ${height})`)
         .call(d3.axisBottom(x).ticks(5).tickFormat(d3.timeFormat("%d/%m")));
 
-      g.selectAll("rect")
+      // Add bars
+      const bars = g.selectAll("g.task")
         .data(tasksParsed)
         .enter()
-        .append("rect")
+        .append("g")
+        .attr("class", "task");
+
+      bars.append("rect")
         .attr("x", d => x(d.start))
         .attr("y", d => y(d.title)!)
         .attr("width", d => x(d.end) - x(d.start))
         .attr("height", y.bandwidth())
         .attr("fill", (d, i) => colorScale(i.toString()))
-        .style("cursor", "pointer")
-        .on("click", (_e, d) => {
-          const original = tasks.value.find(t => t.title === d.title);
-          if (original) startEdit(original);
-        });
+        .style("cursor", "grab");
+
+      // Add left handle for dragging start date
+      bars.append("rect")
+        .attr("x", d => x(d.start) - 5)
+        .attr("y", d => y(d.title)! + y.bandwidth() / 4)
+        .attr("width", 10)
+        .attr("height", y.bandwidth() / 2)
+        .attr("fill", "gray")
+        .style("cursor", "ew-resize")
+        .call(
+          d3.drag<SVGRectElement, any>()
+            .on("drag", function (event, d) {
+              const newStart = x.invert(x(d.start) + event.dx);
+              d.start = newStart;
+              d3.select(this.parentNode).select("rect")
+                .attr("x", x(d.start))
+                .attr("width", x(d.end) - x(d.start));
+              d3.select(this).attr("x", x(d.start) - 5);
+            })
+            .on("end", async function (event, d) {
+              const updated = {
+                ...d,
+                start_date: formatDate(d.start),
+                end_date: formatDate(d.end)
+              };
+
+              try {
+                await axios.put(`http://127.0.0.1:8000/api/tasks/${d.id}`, updated);
+                successMessage.value = "🕒 Data inicial atualizada!";
+                setTimeout(() => successMessage.value = '', 3000);
+                await fetchTasks();
+              } catch (error) {
+                console.error("Erro ao atualizar data inicial:", error);
+              }
+            })
+        );
+
+      // Add right handle for dragging end date
+      bars.append("rect")
+        .attr("x", d => x(d.end) - 5)
+        .attr("y", d => y(d.title)! + y.bandwidth() / 4)
+        .attr("width", 10)
+        .attr("height", y.bandwidth() / 2)
+        .attr("fill", "gray")
+        .style("cursor", "ew-resize")
+        .call(
+          d3.drag<SVGRectElement, any>()
+            .on("drag", function (event, d) {
+              const newEnd = x.invert(x(d.end) + event.dx);
+              d.end = newEnd;
+              d3.select(this.parentNode).select("rect")
+                .attr("width", x(d.end) - x(d.start));
+              d3.select(this).attr("x", x(d.end) - 5);
+            })
+            .on("end", async function (event, d) {
+              const updated = {
+                ...d,
+                start_date: formatDate(d.start),
+                end_date: formatDate(d.end)
+              };
+
+              try {
+                await axios.put(`http://127.0.0.1:8000/api/tasks/${d.id}`, updated);
+                successMessage.value = "🕒 Data final atualizada!";
+                setTimeout(() => successMessage.value = '', 3000);
+                await fetchTasks();
+              } catch (error) {
+                console.error("Erro ao atualizar data final:", error);
+              }
+            })
+        );
     };
 
     onMounted(fetchTasks);
@@ -207,20 +265,9 @@ export default defineComponent({
       showCreateModal,
       successMessage,
       editingTask,
-      startEdit,
       updateTask,
       cancelEdit
     };
   }
 });
 </script>
-
-<style scoped>
-svg {
-  background: #f9fafb;
-  margin-bottom: 16px;
-}
-button {
-  transition: 0.2s;
-}
-</style>
