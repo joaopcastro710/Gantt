@@ -24,9 +24,37 @@ Before running the project, ensure you have the following installed:
 
 Follow these steps to set up and run the project:
 
-### 1. Start Docker Services
+#### Docker
 
-Run the following command to start the required Docker services (e.g., MySQL):
+1. use the command `docker-compose up -d`
 
-```sh
-docker-compose up -d
+#### Laravel
+
+1. Navigate the project folder
+2. Run the Laravel development server: `php artisan serve`
+
+#### Start Vite for Frontend Development
+
+1. Run the command `npm run dev`
+
+##### Notes
+
+- If we get the "Vite Manifest Not Found"
+
+``` rm -rf node_modules package-lock.json public/build
+npm cache clean --force
+npm install
+npm run build
+php artisan serve
+```
+
+- If you get any Database Connection Errors
+
+```
+// make sure Docker is running
+docker ps
+//Restart the MySQL container
+docker-compose restart
+//if database migrations are needed
+php artisan migrate --seed
+```
