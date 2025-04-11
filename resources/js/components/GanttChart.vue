@@ -47,7 +47,7 @@
     <!-- Modal de criação -->
     <div v-if="showCreateModal" class="fixed inset-0 flex items-center justify-center bg-black bg-opacity-50 z-50">
       <div class="bg-white p-6 rounded-xl shadow-lg w-[400px]">
-        <h3 class="text-xl font-semibold mb-4">📝 Nova Tarefa</h3>
+        <h3 class="text-xl font-semibold mb-4">Nova Tarefa</h3>
         <div class="space-y-3">
           <label class="block">
             <span class="text-sm font-medium">Título</span>
@@ -76,7 +76,7 @@
     <!-- Modal de edição -->
     <div v-if="editingTask" class="fixed inset-0 flex items-center justify-center bg-black bg-opacity-50 z-50">
       <div class="bg-white p-6 rounded-xl shadow-lg w-[400px]">
-        <h3 class="text-xl font-semibold mb-4">✏️ Editar Tarefa</h3>
+        <h3 class="text-xl font-semibold mb-4">Editar Tarefa</h3>
         <div class="space-y-3">
           <label class="block">
             <span class="text-sm font-medium">Título</span>
