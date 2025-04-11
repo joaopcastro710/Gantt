@@ -137,7 +137,7 @@ export default defineComponent({
       try {
         await axios.post('http://127.0.0.1:8000/api/tasks', newTask.value);
         showCreateModal.value = false;
-        successMessage.value = '✅ Tarefa criada!';
+        successMessage.value = 'Tarefa criada!';
         newTask.value = { title: '', start_date: '', end_date: '', deadline: '' };
         await fetchTasks();
         setTimeout(() => successMessage.value = '', 3000);
@@ -150,7 +150,7 @@ export default defineComponent({
       if (!editingTask.value) return;
       try {
         await axios.put(`http://127.0.0.1:8000/api/tasks/${editingTask.value.id}`, editingTask.value);
-        successMessage.value = '✅ Tarefa atualizada!';
+        successMessage.value = 'Tarefa atualizada!';
         editingTask.value = null;
         await fetchTasks();
         setTimeout(() => successMessage.value = '', 3000);
@@ -162,7 +162,7 @@ export default defineComponent({
     const deleteTask = async (taskId: number) => {
       try {
         await axios.delete(`http://127.0.0.1:8000/api/tasks/${taskId}`);
-        successMessage.value = '🗑️ Tarefa apagada!';
+        successMessage.value = 'Tarefa apagada!';
         editingTask.value = null;
         await fetchTasks();
         setTimeout(() => successMessage.value = '', 3000);
@@ -208,7 +208,7 @@ export default defineComponent({
       start: parseDate(d.start_date),
       end: parseDate(d.end_date),
     }))
-    .filter(d => d.start && d.end && d.start < d.end); // Filtra tarefas com datas válidas
+    .filter(d=> d.start && d.end) as (Task & { start: Date; end: Date })[];
 
   if (tasksParsed.length === 0) {
     console.warn("Nenhuma tarefa válida encontrada para exibir.");
