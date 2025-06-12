@@ -178,6 +178,14 @@ export default defineComponent({
       deadline: '',
       status: 'pending'
     });
+    const blueShades = [
+  "#dbeafe", 
+  "#93c5fd",
+  "#60a5fa", 
+  "#2563eb", 
+  "#1e40af", 
+  "#1e3a8f" 
+  ];
     const editingTask = ref<TaskAction | null>(null);
     const selectedFilter = ref('all');
 
@@ -312,192 +320,214 @@ export default defineComponent({
     };
 
     const drawChart = (data: TaskAction[]) => {
-      if (!svg.value) {
-        console.error("Elemento SVG não encontrado.");
-        return;
-      }
+  if (!svg.value) {
+    console.error("Elemento SVG não encontrado.");
+    return;
+  }
 
-      const margin = { top: 20, right: 30, bottom: 30, left: 100 };
-      const width = 800 - margin.left - margin.right;
-      const height = data.length * 40;
+  const margin = { top: 20, right: 30, bottom: 30, left: 100 };
+  const width = 800 - margin.left - margin.right;
+  const height = data.length * 40;
 
-      const svgEl = d3.select(svg.value);
-      svgEl.selectAll("*").remove();
+  const svgEl = d3.select(svg.value);
+  svgEl.selectAll("*").remove();
 
-      const g = svgEl
-        .attr("width", width + margin.left + margin.right)
-        .attr("height", height + margin.top + margin.bottom)
-        .append("g")
-        .attr("transform", `translate(${margin.left},${margin.top})`);
+  const g = svgEl
+    .attr("width", width + margin.left + margin.right)
+    .attr("height", height + margin.top + margin.bottom)
+    .append("g")
+    .attr("transform", `translate(${margin.left},${margin.top})`);
 
-      const parseDate = d3.timeParse("%Y-%m-%d %H:%M:%S");
-      const formatDate = d3.timeFormat("%Y-%m-%d %H:%M:%S");
+  const parseDate = d3.timeParse("%Y-%m-%d %H:%M:%S");
+  const formatDate = d3.timeFormat("%Y-%m-%d %H:%M:%S");
 
-      const tasksParsed = data
-        .map(d => ({
-          ...d,
-          title: d.template?.title ?? '',
-          start: parseDate(d.start_date.replace('T', ' ')),
-          end: parseDate(d.end_date.replace('T', ' ')),
-        }))
-        .filter(d => d.start && d.end) as (TaskAction & { title: string; start: Date; end: Date })[];
+  const tasksParsed = data
+    .map(d => ({
+      ...d,
+      title: d.template?.title ?? '',
+      start: parseDate(d.start_date.replace('T', ' ')),
+      end: parseDate(d.end_date.replace('T', ' ')),
+    }))
+    .filter(d => d.start && d.end) as (TaskAction & { title: string; start: Date; end: Date })[];
 
-      if (tasksParsed.length === 0) {
-        return;
-      }
+  if (tasksParsed.length === 0) {
+    return;
+  }
 
-      const x = d3.scaleTime()
-        .domain([d3.min(tasksParsed, d => d.start)!, d3.max(tasksParsed, d => d.end)!])
-        .range([0, width]);
+  const x = d3.scaleTime()
+    .domain([d3.min(tasksParsed, d => d.start)!, d3.max(tasksParsed, d => d.end)!])
+    .range([0, width]);
 
-      const y = d3.scaleBand()
-        .domain(tasksParsed.map(d => d.title))
-        .range([0, height])
-        .padding(0.2);
+  const y = d3.scaleBand()
+    .domain(tasksParsed.map(d => d.title))
+    .range([0, height])
+    .padding(0.2);
 
-      g.append("g").call(d3.axisLeft(y));
-      g.append("g")
-        .attr("transform", `translate(0, ${height})`)
-        .call(d3.axisBottom(x).ticks(5).tickFormat(d3.timeFormat("%d/%m")));
+  // --- Linhas verticais de separação dos dias ---
+  const startDate = d3.min(tasksParsed, d => d.start)!;
+  const endDate = d3.max(tasksParsed, d => d.end)!;
+  const days = d3.timeDay.range(
+    d3.timeDay.floor(startDate),
+    d3.timeDay.ceil(endDate)
+  );
 
-      const bars = g.selectAll("g.task")
-        .data(tasksParsed)
-        .enter()
-        .append("g")
-        .attr("class", "task");
+  g.selectAll(".day-separator")
+    .data(days)
+    .enter()
+    .append("line")
+    .attr("class", "day-separator")
+    .attr("x1", d => x(d))
+    .attr("x2", d => x(d))
+    .attr("y1", 0)
+    .attr("y2", height)
+    .attr("stroke", "#e5e7eb")
+    .attr("stroke-width", 1)
+    .attr("stroke-dasharray", "2 2");
 
-      // Barra principal (drag move)
-      bars.append("rect")
-        .attr("x", d => x(d.start))
-        .attr("y", d => y(d.title)!)
-        .attr("width", d => x(d.end) - x(d.start))
-        .attr("height", y.bandwidth())
-        .attr("fill", (d, i) => colorScale(i.toString()))
-        .style("cursor", "pointer")
-        .call(
-          d3.drag()
-            .on("start", function (event, d) {
-              d3.select(this).raise().attr("stroke", "black");
-            })
-            .on("drag", function (event, d) {
-              // Move toda a barra
-              const dx = x.invert(event.x).getTime() - d.start.getTime();
-              d.start = new Date(d.start.getTime() + dx);
-              d.end = new Date(d.end.getTime() + dx);
-              d3.select(this)
-                .attr("x", x(d.start));
-              // Atualiza handles
-              d3.select(this.parentNode).selectAll("rect.handle-start")
-                .attr("x", x(d.start) - 4);
-              d3.select(this.parentNode).selectAll("rect.handle-end")
-                .attr("x", x(d.end) - 4);
-              d3.select(this).attr("width", x(d.end) - x(d.start));
-            })
-            .on("end", async function (event, d) {
-              d3.select(this).attr("stroke", null);
-              try {
-                await axios.put(`http://127.0.0.1:8000/api/task-actions/${d.id}`, {
-                  task_template_id: d.task_template_id,
-                  start_date: d3.timeFormat("%Y-%m-%dT%H:%M")(d.start),
-                  end_date: d3.timeFormat("%Y-%m-%dT%H:%M")(d.end),
-                  deadline: d.deadline,
-                  status: d.status
-                });
-              } catch (error) {
-                console.error("Erro ao atualizar datas por drag:", error);
-              }
-            })
-        )
-        .on("click", (event, d) => {
-          editingTask.value = {
-            ...d,
-            start_date: d3.timeFormat("%Y-%m-%dT%H:%M")(d.start),
-            end_date: d3.timeFormat("%Y-%m-%dT%H:%M")(d.end),
-          };
-        });
+  // Eixos
+  g.append("g").call(d3.axisLeft(y));
+  g.append("g")
+    .attr("transform", `translate(0, ${height})`)
+    .call(d3.axisBottom(x).ticks(5).tickFormat(d3.timeFormat("%d/%m")));
 
-      // Handles para ajustar início e fim
-      const handleWidth = 8;
+  const bars = g.selectAll("g.task")
+    .data(tasksParsed)
+    .enter()
+    .append("g")
+    .attr("class", "task");
 
-      // Handle esquerdo (start)
-      bars.append("rect")
-        .attr("class", "handle-start")
-        .attr("x", d => x(d.start) - handleWidth / 2)
-        .attr("y", d => y(d.title)!)
-        .attr("width", handleWidth)
-        .attr("height", y.bandwidth())
-        .attr("fill", "#333")
-        .attr("cursor", "ew-resize")
-        .call(
-          d3.drag()
-            .on("start", function (event, d) {
-              d3.select(this).raise().attr("stroke", "black");
-            })
-            .on("drag", function (event, d) {
-              const newStart = x.invert(event.x);
-              if (newStart < d.end) {
-                d.start = newStart;
-                d3.select(this).attr("x", x(d.start) - handleWidth / 2);
-                d3.select(this.parentNode).select("rect:not(.handle-start):not(.handle-end)")
-                  .attr("x", x(d.start))
-                  .attr("width", x(d.end) - x(d.start));
-              }
-            })
-            .on("end", async function (event, d) {
-              d3.select(this).attr("stroke", null);
-              try {
-                await axios.put(`http://127.0.0.1:8000/api/task-actions/${d.id}`, {
-                  task_template_id: d.task_template_id,
-                  start_date: d3.timeFormat("%Y-%m-%dT%H:%M")(d.start),
-                  end_date: d3.timeFormat("%Y-%m-%dT%H:%M")(d.end),
-                  deadline: d.deadline,
-                  status: d.status
-                });
-              } catch (error) {
-                console.error("Erro ao atualizar datas por handle esquerdo:", error);
-              }
-            })
-        );
+  // Barra principal (drag move)
+  bars.append("rect")
+    .attr("x", d => x(d.start))
+    .attr("y", d => y(d.title)!)
+    .attr("width", d => x(d.end) - x(d.start))
+    .attr("height", y.bandwidth())
+    .attr("fill", (d, i) => blueShades[i % blueShades.length])
+    .style("cursor", "pointer")
+    .call(
+      d3.drag()
+        .on("start", function (event, d) {
+          d3.select(this).raise().attr("stroke", "black");
+        })
+        .on("drag", function (event, d) {
+          // Move toda a barra
+          const dx = x.invert(event.x).getTime() - d.start.getTime();
+          d.start = new Date(d.start.getTime() + dx);
+          d.end = new Date(d.end.getTime() + dx);
+          d3.select(this)
+            .attr("x", x(d.start));
+          // Atualiza handles
+          d3.select(this.parentNode).selectAll("rect.handle-start")
+            .attr("x", x(d.start) - 4);
+          d3.select(this.parentNode).selectAll("rect.handle-end")
+            .attr("x", x(d.end) - 4);
+          d3.select(this).attr("width", x(d.end) - x(d.start));
+        })
+        .on("end", async function (event, d) {
+          d3.select(this).attr("stroke", null);
+          try {
+            await axios.put(`http://127.0.0.1:8000/api/task-actions/${d.id}`, {
+              task_template_id: d.task_template_id,
+              start_date: d3.timeFormat("%Y-%m-%dT%H:%M")(d.start),
+              end_date: d3.timeFormat("%Y-%m-%dT%H:%M")(d.end),
+              deadline: d.deadline,
+              status: d.status
+            });
+          } catch (error) {
+            console.error("Erro ao atualizar datas por drag:", error);
+          }
+        })
+    )
+    .on("click", (event, d) => {
+      editingTask.value = {
+        ...d,
+        start_date: d3.timeFormat("%Y-%m-%dT%H:%M")(d.start),
+        end_date: d3.timeFormat("%Y-%m-%dT%H:%M")(d.end),
+      };
+    });
 
-      // Handle direito (end)
-      bars.append("rect")
-        .attr("class", "handle-end")
-        .attr("x", d => x(d.end) - handleWidth / 2)
-        .attr("y", d => y(d.title)!)
-        .attr("width", handleWidth)
-        .attr("height", y.bandwidth())
-        .attr("fill", "#333")
-        .attr("cursor", "ew-resize")
-        .call(
-          d3.drag()
-            .on("start", function (event, d) {
-              d3.select(this).raise().attr("stroke", "black");
-            })
-            .on("drag", function (event, d) {
-              const newEnd = x.invert(event.x);
-              if (newEnd > d.start) {
-                d.end = newEnd;
-                d3.select(this).attr("x", x(d.end) - handleWidth / 2);
-                d3.select(this.parentNode).select("rect:not(.handle-start):not(.handle-end)")
-                  .attr("width", x(d.end) - x(d.start));
-              }
-            })
-            .on("end", async function (event, d) {
-              d3.select(this).attr("stroke", null);
-              try {
-                await axios.put(`http://127.0.0.1:8000/api/task-actions/${d.id}`, {
-                  task_template_id: d.task_template_id,
-                  start_date: d3.timeFormat("%Y-%m-%dT%H:%M")(d.start),
-                  end_date: d3.timeFormat("%Y-%m-%dT%H:%M")(d.end),
-                  deadline: d.deadline,
-                  status: d.status
-                });
-              } catch (error) {
-                console.error("Erro ao atualizar datas por handle direito:", error);
-              }
-            })
-        );
-    };
+  // Handles para ajustar início e fim
+  const handleWidth = 8;
+
+  // Handle esquerdo (start)
+  bars.append("rect")
+    .attr("class", "handle-start")
+    .attr("x", d => x(d.start) - handleWidth / 2)
+    .attr("y", d => y(d.title)!)
+    .attr("width", handleWidth)
+    .attr("height", y.bandwidth())
+    .attr("fill", "#333")
+    .attr("cursor", "ew-resize")
+    .call(
+      d3.drag()
+        .on("start", function (event, d) {
+          d3.select(this).raise().attr("stroke", "black");
+        })
+        .on("drag", function (event, d) {
+          const newStart = x.invert(event.x);
+          if (newStart < d.end) {
+            d.start = newStart;
+            d3.select(this).attr("x", x(d.start) - handleWidth / 2);
+            d3.select(this.parentNode).select("rect:not(.handle-start):not(.handle-end)")
+              .attr("x", x(d.start))
+              .attr("width", x(d.end) - x(d.start));
+          }
+        })
+        .on("end", async function (event, d) {
+          d3.select(this).attr("stroke", null);
+          try {
+            await axios.put(`http://127.0.0.1:8000/api/task-actions/${d.id}`, {
+              task_template_id: d.task_template_id,
+              start_date: d3.timeFormat("%Y-%m-%dT%H:%M")(d.start),
+              end_date: d3.timeFormat("%Y-%m-%dT%H:%M")(d.end),
+              deadline: d.deadline,
+              status: d.status
+            });
+          } catch (error) {
+            console.error("Erro ao atualizar datas por handle esquerdo:", error);
+          }
+        })
+    );
+
+  // Handle direito (end)
+  bars.append("rect")
+    .attr("class", "handle-end")
+    .attr("x", d => x(d.end) - handleWidth / 2)
+    .attr("y", d => y(d.title)!)
+    .attr("width", handleWidth)
+    .attr("height", y.bandwidth())
+    .attr("fill", "#333")
+    .attr("cursor", "ew-resize")
+    .call(
+      d3.drag()
+        .on("start", function (event, d) {
+          d3.select(this).raise().attr("stroke", "black");
+        })
+        .on("drag", function (event, d) {
+          const newEnd = x.invert(event.x);
+          if (newEnd > d.start) {
+            d.end = newEnd;
+            d3.select(this).attr("x", x(d.end) - handleWidth / 2);
+            d3.select(this.parentNode).select("rect:not(.handle-start):not(.handle-end)")
+              .attr("width", x(d.end) - x(d.start));
+          }
+        })
+        .on("end", async function (event, d) {
+          d3.select(this).attr("stroke", null);
+          try {
+            await axios.put(`http://127.0.0.1:8000/api/task-actions/${d.id}`, {
+              task_template_id: d.task_template_id,
+              start_date: d3.timeFormat("%Y-%m-%dT%H:%M")(d.start),
+              end_date: d3.timeFormat("%Y-%m-%dT%H:%M")(d.end),
+              deadline: d.deadline,
+              status: d.status
+            });
+          } catch (error) {
+            console.error("Erro ao atualizar datas por handle direito:", error);
+          }
+        })
+    );
+};
 
     onMounted(() => {
       fetchTemplates();
@@ -586,15 +616,320 @@ input, select {
 }
 </style>
 
+/* ...existing code... */
 <style scoped>
-svg {
-  background: #f9fafb;
-  margin: 0 auto;
+/* Layout base */
+body, .max-w-7xl {
+  background: #f7f8fa;
+  font-family: 'Inter', 'Segoe UI', Arial, sans-serif;
+  color: #222;
+}
+
+/* Barra de navegação superior */
+.navbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: #fff;
+  border-bottom: 1px solid #e5e7eb;
+  padding: 0 2rem;
+  height: 64px;
+  box-shadow: 0 2px 8px 0 rgba(0,0,0,0.03);
+}
+.navbar-title {
+  font-size: 1.5rem;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+}
+.navbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 1.5rem;
+}
+.navbar-avatar {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: #e0e7ef;
+  object-fit: cover;
+  border: 2px solid #d1d5db;
+}
+.navbar-icon {
+  font-size: 1.3rem;
+  color: #6366f1;
+  margin-right: 0.5rem;
+  cursor: pointer;
+}
+.navbar-dropdown {
   border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  padding: 0.25rem 1rem;
+  background: #f9fafb;
+  font-size: 1rem;
+  color: #374151;
+}
+.navbar-btn {
+  background: linear-gradient(90deg, #2563eb 0%, #6366f1 100%);
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  padding: 0.5rem 1.5rem;
+  font-weight: 600;
+  font-size: 1rem;
+  cursor: pointer;
+  box-shadow: 0 2px 8px 0 rgba(99,102,241,0.08);
+  transition: background 0.2s;
+}
+.navbar-btn:hover {
+  background: linear-gradient(90deg, #1d4ed8 0%, #4f46e5 100%);
+}
+
+/* Sidebar vertical */
+.sidebar {
+  position: fixed;
+  left: 0;
+  top: 0;
+  width: 64px;
+  height: 100vh;
+  background: #23263a;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding-top: 80px;
+  gap: 2rem;
+  z-index: 10;
+}
+.sidebar-icon {
+  color: #a3aed6;
+  font-size: 1.7rem;
+  margin-bottom: 1.5rem;
+  cursor: pointer;
+  transition: color 0.2s;
+}
+.sidebar-icon.active,
+.sidebar-icon:hover {
+  color: #6366f1;
+}
+
+/* Conteúdo principal */
+.main-content {
+  margin-left: 80px;
+  padding: 2.5rem 2rem 2rem 2rem;
+  background: #f7f8fa;
+  min-height: 100vh;
+}
+.gantt-title {
+  font-size: 2.2rem;
+  font-weight: 700;
+  margin-bottom: 0.5rem;
+  color: #23263a;
+  letter-spacing: 0.01em;
+}
+.gantt-tasks-label {
+  font-size: 1.1rem;
+  font-weight: 500;
+  color: #6366f1;
+  margin-bottom: 1.5rem;
+}
+
+/* Cabeçalho do cronograma */
+.gantt-header {
+  display: flex;
+  flex-direction: column;
+  margin-bottom: 0.5rem;
+}
+.gantt-header-range {
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: #23263a;
+  margin-bottom: 0.2rem;
+  letter-spacing: 0.01em;
+}
+.gantt-header-days {
+  display: flex;
+  gap: 0.5rem;
+  font-size: 1rem;
+  color: #6b7280;
+  font-weight: 500;
+}
+.gantt-header-days span {
+  width: 2.5rem;
+  text-align: center;
   border-radius: 4px;
+  padding: 0.1rem 0;
+}
+
+/* Gantt Chart SVG */
+svg {
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  box-shadow: 0 2px 8px 0 rgba(0,0,0,0.03);
+  margin: 0 auto 1.5rem auto;
   display: block;
   width: 100%;
-  max-width: 800px;
+  max-width: 1100px;
   height: auto;
+}
+
+/* Linhas verticais alternadas (fins de semana) */
+.gantt-bg-stripes rect {
+  fill: #f3f4f6;
+}
+.gantt-bg-stripes rect.weekend {
+  fill: #e0e7ef;
+}
+
+/* Linhas de tarefas */
+.gantt-row {
+  display: flex;
+  align-items: center;
+  height: 44px;
+  border-bottom: 1px solid #f3f4f6;
+  background: #fff;
+}
+.gantt-row.summary {
+  background: #1e293b;
+  color: #fff;
+  font-weight: 700;
+  font-size: 1.08rem;
+}
+.gantt-row .gantt-avatar {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  margin-right: 0.7rem;
+  border: 2px solid #fff;
+  box-shadow: 0 1px 4px 0 rgba(30,41,59,0.07);
+  background: #e0e7ef;
+  object-fit: cover;
+}
+.gantt-row .gantt-bar {
+  border-radius: 8px;
+  height: 22px;
+  min-width: 60px;
+  display: flex;
+  align-items: center;
+  font-size: 0.98rem;
+  font-weight: 500;
+  padding: 0 1.2rem 0 0.7rem;
+  box-shadow: 0 1px 4px 0 rgba(30,41,59,0.07);
+  position: relative;
+}
+.gantt-row .gantt-bar.summary {
+  background: linear-gradient(90deg, #1e293b 80%, #334155 100%);
+  color: #fff;
+}
+.gantt-row .gantt-bar .gantt-duration {
+  margin-left: auto;
+  font-size: 0.93rem;
+  font-weight: 600;
+  color: #23263a;
+  background: #fff6;
+  border-radius: 6px;
+  padding: 0 0.5em;
+  margin-right: 0.3em;
+}
+
+/* Dependências e marcos */
+.gantt-link {
+  stroke: #60a5fa;
+  stroke-width: 2.5;
+  fill: none;
+  marker-end: url(#arrowhead);
+  opacity: 0.85;
+}
+.gantt-milestone {
+  fill: #fff;
+  stroke: #6366f1;
+  stroke-width: 2.5;
+  shape-rendering: geometricPrecision;
+}
+.gantt-milestone-label {
+  font-size: 0.97rem;
+  font-weight: 500;
+  fill: #23263a;
+  alignment-baseline: middle;
+  dominant-baseline: middle;
+  letter-spacing: 0.01em;
+}
+.gantt-milestone-avatar {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 2px solid #fff;
+  box-shadow: 0 1px 4px 0 rgba(99,102,241,0.09);
+  background: #e0e7ef;
+  object-fit: cover;
+  margin-right: 0.4em;
+  vertical-align: middle;
+}
+
+/* Tooltip minimalista */
+.gantt-tooltip {
+  position: absolute;
+  background: #fff;
+  color: #23263a;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  padding: 0.7em 1.1em;
+  font-size: 0.97rem;
+  box-shadow: 0 2px 8px 0 rgba(0,0,0,0.07);
+  pointer-events: none;
+  z-index: 100;
+  min-width: 180px;
+}
+
+/* Filtros e inputs */
+input, select {
+  font-size: 1rem;
+  padding: 0.6em 1em;
+  border-radius: 6px;
+  border: 1px solid #e5e7eb;
+  background: #f9fafb;
+  color: #23263a;
+  outline: none;
+  transition: border 0.2s;
+}
+input:focus, select:focus {
+  border-color: #6366f1;
+  background: #fff;
+}
+
+/* Botões */
+button {
+  transition: 0.2s;
+  border-radius: 8px;
+  font-weight: 600;
+  font-size: 1rem;
+  padding: 0.5rem 1.5rem;
+  border: none;
+  outline: none;
+}
+button:hover {
+  filter: brightness(0.97);
+}
+
+/* Modal */
+.fixed {
+  z-index: 1000;
+}
+.modal input {
+  font-size: 0.97rem;
+}
+
+/* Animação fade-in */
+@keyframes fade-in-up {
+  0% {
+    opacity: 0;
+    transform: translateY(40px) scale(0.98);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+.animate-fade-in-up {
+  animation: fade-in-up 0.35s cubic-bezier(.4,0,.2,1);
 }
 </style>
