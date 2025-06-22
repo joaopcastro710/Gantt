@@ -151,17 +151,29 @@ interface TaskAction {
     title: string;
     description: string;
   };
+  dependencies: number[]; // Re-included dependencies
 }
+type ParsedTask = TaskAction & { title: string; start: Date; end: Date; dependencies: number[] };
 
 interface TaskTemplate {
   id: number;
   title: string;
   description: string;
 }
+interface LifecycleStage {
+  id: number;
+  name: string;
+  start_date: string;
+  end_date: string;
+}
 
 export default defineComponent({
   name: 'GanttChart',
-  setup() {
+  props: {
+    unitId: { type: Number, required: true }
+  },
+  setup(props) {
+    const stages = ref<LifecycleStage[]>([]);
     const selectedMonth = ref('');
     const selectedWeek = ref('');
     const selectedDay = ref('');
@@ -202,11 +214,25 @@ export default defineComponent({
 
     const fetchTasks = async () => {
       try {
-        const response = await axios.get('http://127.0.0.1:8000/api/task-actions');
+        // Use query parameter to filter by unit, since /units/:unitId/tasks returns 404
+        const response = await axios.get('http://127.0.0.1:8000/api/task-actions', {
+          params: { unit_id: props.unitId }
+        });
         tasks.value = response.data;
         applyFilter();
       } catch (error) {
         console.error("Erro ao buscar tarefas:", error);
+      }
+    };
+    const fetchStages = async () => {
+      try {
+        const response = await axios.get(
+          'http://127.0.0.1:8000/api/lifecycle-stages',
+          { params: { unit_id: props.unitId } }
+        );
+        stages.value = response.data;
+      } catch (error) {
+        console.error("Erro ao buscar lifecycle:", error);
       }
     };
 
@@ -320,217 +346,243 @@ export default defineComponent({
     };
 
     const drawChart = (data: TaskAction[]) => {
-  if (!svg.value) {
-    console.error("Elemento SVG não encontrado.");
-    return;
-  }
+      if (!svg.value) {
+        console.error("Elemento SVG não encontrado.");
+        return;
+      }
 
-  const margin = { top: 20, right: 30, bottom: 30, left: 100 };
-  const width = 800 - margin.left - margin.right;
-  const height = data.length * 40;
+      const margin = { top: 20, right: 30, bottom: 30, left: 100 };
+      const width = 800 - margin.left - margin.right;
+      const height = data.length * 40;
 
-  const svgEl = d3.select(svg.value);
-  svgEl.selectAll("*").remove();
+      const svgEl = d3.select(svg.value);
+      svgEl.selectAll("*").remove();
 
-  const g = svgEl
-    .attr("width", width + margin.left + margin.right)
-    .attr("height", height + margin.top + margin.bottom)
-    .append("g")
-    .attr("transform", `translate(${margin.left},${margin.top})`);
+      const g = svgEl
+        .attr("width", width + margin.left + margin.right)
+        .attr("height", height + margin.top + margin.bottom)
+        .append("g")
+        .attr("transform", `translate(${margin.left},${margin.top})`);
 
-  const parseDate = d3.timeParse("%Y-%m-%d %H:%M:%S");
-  const formatDate = d3.timeFormat("%Y-%m-%d %H:%M:%S");
+      const parseDate = d3.timeParse("%Y-%m-%d %H:%M:%S");
+      const formatDate = d3.timeFormat("%Y-%m-%d %H:%M:%S");
 
-  const tasksParsed = data
-    .map(d => ({
-      ...d,
-      title: d.template?.title ?? '',
-      start: parseDate(d.start_date.replace('T', ' ')),
-      end: parseDate(d.end_date.replace('T', ' ')),
-    }))
-    .filter(d => d.start && d.end) as (TaskAction & { title: string; start: Date; end: Date })[];
+      const tasksParsed = data
+        .map(d => ({
+          ...d,
+          dependencies: d.dependencies ?? [],
+          title: d.template?.title ?? '',
+          start: parseDate(d.start_date.replace('T', ' ')),
+          end: parseDate(d.end_date.replace('T', ' ')),
+        }))
+        .filter(d => d.start && d.end) as ParsedTask[];
 
-  if (tasksParsed.length === 0) {
-    return;
-  }
-
-  const x = d3.scaleTime()
-    .domain([d3.min(tasksParsed, d => d.start)!, d3.max(tasksParsed, d => d.end)!])
-    .range([0, width]);
-
-  const y = d3.scaleBand()
-    .domain(tasksParsed.map(d => d.title))
-    .range([0, height])
-    .padding(0.2);
-
-  // --- Linhas verticais de separação dos dias ---
-  const startDate = d3.min(tasksParsed, d => d.start)!;
-  const endDate = d3.max(tasksParsed, d => d.end)!;
-  const days = d3.timeDay.range(
-    d3.timeDay.floor(startDate),
-    d3.timeDay.ceil(endDate)
-  );
-
-  g.selectAll(".day-separator")
-    .data(days)
-    .enter()
-    .append("line")
-    .attr("class", "day-separator")
-    .attr("x1", d => x(d))
-    .attr("x2", d => x(d))
-    .attr("y1", 0)
-    .attr("y2", height)
-    .attr("stroke", "#e5e7eb")
-    .attr("stroke-width", 1)
-    .attr("stroke-dasharray", "2 2");
-
-  // Eixos
-  g.append("g").call(d3.axisLeft(y));
-  g.append("g")
-    .attr("transform", `translate(0, ${height})`)
-    .call(d3.axisBottom(x).ticks(5).tickFormat(d3.timeFormat("%d/%m")));
-
-  const bars = g.selectAll("g.task")
-    .data(tasksParsed)
-    .enter()
-    .append("g")
-    .attr("class", "task");
-
-  // Barra principal (drag move)
-  bars.append("rect")
-    .attr("x", d => x(d.start))
-    .attr("y", d => y(d.title)!)
-    .attr("width", d => x(d.end) - x(d.start))
-    .attr("height", y.bandwidth())
-    .attr("fill", (d, i) => blueShades[i % blueShades.length])
-    .style("cursor", "pointer")
-    .call(
-      d3.drag()
-        .on("start", function (event, d) {
-          d3.select(this).raise().attr("stroke", "black");
-        })
-        .on("drag", function (event, d) {
-          // Move toda a barra
-          const dx = x.invert(event.x).getTime() - d.start.getTime();
-          d.start = new Date(d.start.getTime() + dx);
-          d.end = new Date(d.end.getTime() + dx);
-          d3.select(this)
-            .attr("x", x(d.start));
-          // Atualiza handles
-          d3.select(this.parentNode).selectAll("rect.handle-start")
-            .attr("x", x(d.start) - 4);
-          d3.select(this.parentNode).selectAll("rect.handle-end")
-            .attr("x", x(d.end) - 4);
-          d3.select(this).attr("width", x(d.end) - x(d.start));
-        })
-        .on("end", async function (event, d) {
-          d3.select(this).attr("stroke", null);
-          try {
-            await axios.put(`http://127.0.0.1:8000/api/task-actions/${d.id}`, {
-              task_template_id: d.task_template_id,
-              start_date: d3.timeFormat("%Y-%m-%dT%H:%M")(d.start),
-              end_date: d3.timeFormat("%Y-%m-%dT%H:%M")(d.end),
-              deadline: d.deadline,
-              status: d.status
-            });
-          } catch (error) {
-            console.error("Erro ao atualizar datas por drag:", error);
+      // Assign lanes to avoid overlapping tasks on same template
+      const lanesByTitle: Record<string, ParsedTask[][]> = {};
+      tasksParsed.sort((a, b) => a.start.getTime() - b.start.getTime());
+      tasksParsed.forEach(task => {
+        const title = task.title;
+        if (!lanesByTitle[title]) lanesByTitle[title] = [];
+        let placed = false;
+        lanesByTitle[title].forEach((lane, idx) => {
+          if (!lane.some(t => t.start < task.end && task.start < t.end)) {
+            lane.push(task);
+            (task as any).lane = idx;
+            placed = true;
           }
-        })
-    )
-    .on("click", (event, d) => {
-      editingTask.value = {
-        ...d,
-        start_date: d3.timeFormat("%Y-%m-%dT%H:%M")(d.start),
-        end_date: d3.timeFormat("%Y-%m-%dT%H:%M")(d.end),
-      };
-    });
+        });
+        if (!placed) {
+          lanesByTitle[title].push([task]);
+          (task as any).lane = lanesByTitle[title].length - 1;
+        }
+      });
+      // Create row keys for scale domain
+      const rowKeys = Object.keys(lanesByTitle).flatMap(title =>
+        lanesByTitle[title].map((_, idx) => `${title}__${idx}`)
+      );
 
-  // Handles para ajustar início e fim
-  const handleWidth = 8;
+      if (tasksParsed.length === 0) {
+        return;
+      }
 
-  // Handle esquerdo (start)
-  bars.append("rect")
-    .attr("class", "handle-start")
-    .attr("x", d => x(d.start) - handleWidth / 2)
-    .attr("y", d => y(d.title)!)
-    .attr("width", handleWidth)
-    .attr("height", y.bandwidth())
-    .attr("fill", "#333")
-    .attr("cursor", "ew-resize")
-    .call(
-      d3.drag()
-        .on("start", function (event, d) {
-          d3.select(this).raise().attr("stroke", "black");
-        })
-        .on("drag", function (event, d) {
-          const newStart = x.invert(event.x);
-          if (newStart < d.end) {
-            d.start = newStart;
-            d3.select(this).attr("x", x(d.start) - handleWidth / 2);
-            d3.select(this.parentNode).select("rect:not(.handle-start):not(.handle-end)")
-              .attr("x", x(d.start))
-              .attr("width", x(d.end) - x(d.start));
-          }
-        })
-        .on("end", async function (event, d) {
-          d3.select(this).attr("stroke", null);
-          try {
-            await axios.put(`http://127.0.0.1:8000/api/task-actions/${d.id}`, {
-              task_template_id: d.task_template_id,
-              start_date: d3.timeFormat("%Y-%m-%dT%H:%M")(d.start),
-              end_date: d3.timeFormat("%Y-%m-%dT%H:%M")(d.end),
-              deadline: d.deadline,
-              status: d.status
-            });
-          } catch (error) {
-            console.error("Erro ao atualizar datas por handle esquerdo:", error);
-          }
-        })
-    );
+      const x = d3.scaleTime()
+        .domain([d3.min(tasksParsed, d => d.start)!, d3.max(tasksParsed, d => d.end)!])
+        .range([0, width]);
 
-  // Handle direito (end)
-  bars.append("rect")
-    .attr("class", "handle-end")
-    .attr("x", d => x(d.end) - handleWidth / 2)
-    .attr("y", d => y(d.title)!)
-    .attr("width", handleWidth)
-    .attr("height", y.bandwidth())
-    .attr("fill", "#333")
-    .attr("cursor", "ew-resize")
-    .call(
-      d3.drag()
-        .on("start", function (event, d) {
-          d3.select(this).raise().attr("stroke", "black");
+      const y = d3.scaleBand()
+        .domain(rowKeys)
+        .range([0, height])
+        .padding(0.2);
+
+      // Draw y-axis with template titles only
+      g.append("g")
+        .call(d3.axisLeft(y)
+          .tickFormat(d => (d as string).split('__')[0])
+        );
+      // Draw x-axis
+      g.append("g")
+        .attr("transform", `translate(0, ${height})`)
+        .call(((selection: any) =>
+          (d3.axisBottom(x)
+            .ticks(5)
+            .tickFormat((d: any) => d3.timeFormat("%d/%m")(d as Date))
+          )(selection)
+        ) as any);
+
+      // Draw dependency lines
+      const depLines = tasksParsed.flatMap(d =>
+        d.dependencies.map(depId => {
+          const src = tasksParsed.find(t => t.id === depId)!;
+          return { source: src, target: d };
         })
-        .on("drag", function (event, d) {
-          const newEnd = x.invert(event.x);
-          if (newEnd > d.start) {
-            d.end = newEnd;
-            d3.select(this).attr("x", x(d.end) - handleWidth / 2);
-            d3.select(this.parentNode).select("rect:not(.handle-start):not(.handle-end)")
-              .attr("width", x(d.end) - x(d.start));
-          }
-        })
-        .on("end", async function (event, d) {
-          d3.select(this).attr("stroke", null);
-          try {
-            await axios.put(`http://127.0.0.1:8000/api/task-actions/${d.id}`, {
-              task_template_id: d.task_template_id,
-              start_date: d3.timeFormat("%Y-%m-%dT%H:%M")(d.start),
-              end_date: d3.timeFormat("%Y-%m-%dT%H:%M")(d.end),
-              deadline: d.deadline,
-              status: d.status
-            });
-          } catch (error) {
-            console.error("Erro ao atualizar datas por handle direito:", error);
-          }
-        })
-    );
-};
+      );
+      g.selectAll("line.dependency-line")
+        .data(depLines)
+        .enter()
+        .append("line")
+        .attr("class", "dependency-line")
+        .attr("x1", d => x(d.source.end))
+        .attr("y1", d => y(`${d.source.title}__${(d.source as any).lane}`)! + y.bandwidth() / 2)
+        .attr("x2", d => x(d.target.start))
+        .attr("y2", d => y(`${d.target.title}__${(d.target as any).lane}`)! + y.bandwidth() / 2)
+        .attr("stroke", "#f00")
+        .attr("stroke-width", 1)
+        .attr("stroke-dasharray", "4 2");
+
+      const bars = g.selectAll("g.task")
+        .data(tasksParsed)
+        .enter()
+        .append("g")
+        .attr("class", "task");
+
+      // Barra principal (drag move)
+      bars.append("rect")
+        .attr("x", d => x(d.start))
+        .attr("y", d => y(`${d.title}__${(d as any).lane}`)!)
+        .attr("width", d => x(d.end) - x(d.start))
+        .attr("height", y.bandwidth())
+        .attr("fill", (d, i) => blueShades[i % blueShades.length])
+        .style("cursor", "pointer")
+        .call(
+          d3.drag<SVGRectElement, ParsedTask, any>()
+            .on("start", function (event, d) {
+              d3.select(this).raise().attr("stroke", "black");
+            })
+            .on("drag", function (event, d) {
+              // Move toda a barra
+              const dx = x.invert(event.x).getTime() - d.start.getTime();
+              d.start = new Date(d.start.getTime() + dx);
+              d.end = new Date(d.end.getTime() + dx);
+              d3.select(this)
+                .attr("x", x(d.start));
+              // Atualiza handles
+              d3.select(this.parentNode as any).selectAll("rect.handle-start")
+                .attr("x", x(d.start) - 4);
+              d3.select(this.parentNode as any).selectAll("rect.handle-end")
+                .attr("x", x(d.end) - 4);
+              d3.select(this).attr("width", x(d.end) - x(d.start));
+            })
+            .on("end", async function (event, d) {
+              d3.select(this).attr("stroke", null);
+              try {
+                await axios.put(`http://127.0.0.1:8000/api/task-actions/${d.id}`, {
+                  task_template_id: d.task_template_id,
+                  start_date: d3.timeFormat("%Y-%m-%dT%H:%M")(d.start),
+                  end_date: d3.timeFormat("%Y-%m-%dT%H:%M")(d.end),
+                  deadline: d.deadline,
+                  status: d.status
+                });
+              } catch (error) {
+                console.error("Erro ao atualizar datas por drag:", error);
+              }
+            })
+        )
+        .on("click", (event, d) => {
+          editingTask.value = {
+            ...d,
+            start_date: d3.timeFormat("%Y-%m-%dT%H:%M")(d.start),
+            end_date: d3.timeFormat("%Y-%m-%dT%H:%M")(d.end),
+          };
+        });
+
+      // Handles para ajustar início e fim
+      const handleWidth = 8;
+
+      // Handle esquerdo (start)
+      bars.append("rect")
+        .attr("class", "handle-start")
+        .call(
+          d3.drag<SVGRectElement, ParsedTask, any>()
+            .on("start", function (event, d) {
+              d3.select(this).raise().attr("stroke", "black");
+            })
+            .on("drag", function (event, d) {
+              const newStart = x.invert(event.x);
+              if (newStart < d.end) {
+                d.start = newStart;
+                d3.select(this).attr("x", x(d.start) - handleWidth / 2);
+                d3.select(this.parentNode as any).select("rect:not(.handle-start):not(.handle-end)")
+                  .attr("x", x(d.start))
+                  .attr("width", x(d.end) - x(d.start));
+              }
+            })
+            .on("end", async function (event, d) {
+              d3.select(this).attr("stroke", null);
+              try {
+                await axios.put(`http://127.0.0.1:8000/api/task-actions/${d.id}`, {
+                  task_template_id: d.task_template_id,
+                  start_date: d3.timeFormat("%Y-%m-%dT%H:%M")(d.start),
+                  end_date: d3.timeFormat("%Y-%m-%dT%H:%M")(d.end),
+                  deadline: d.deadline,
+                  status: d.status
+                });
+              } catch (error) {
+                console.error("Erro ao atualizar datas por handle esquerdo:", error);
+              }
+            })
+        );
+
+      // Handle direito (end)
+      bars.append("rect")
+        .attr("class", "handle-end")
+        .call(
+          d3.drag<SVGRectElement, ParsedTask, any>()
+            .on("start", function (event, d) {
+              d3.select(this).raise().attr("stroke", "black");
+            })
+            .on("drag", function (event, d) {
+              const newEnd = x.invert(event.x);
+              if (newEnd > d.start) {
+                d.end = newEnd;
+                d3.select(this).attr("x", x(d.end) - handleWidth / 2);
+                d3.select(this.parentNode as any).select("rect:not(.handle-start):not(.handle-end)")
+                  .attr("width", x(d.end) - x(d.start));
+              }
+            })
+            .on("end", async function (event, d) {
+              d3.select(this).attr("stroke", null);
+              try {
+                await axios.put(`http://127.0.0.1:8000/api/task-actions/${d.id}`, {
+                  task_template_id: d.task_template_id,
+                  start_date: d3.timeFormat("%Y-%m-%dT%H:%M")(d.start),
+                  end_date: d3.timeFormat("%Y-%m-%dT%H:%M")(d.end),
+                  deadline: d.deadline,
+                  status: d.status
+                });
+              } catch (error) {
+                console.error("Erro ao atualizar datas por handle direito:", error);
+              }
+            })
+        );
+    };
 
     onMounted(() => {
       fetchTemplates();
+      if (props.unitId) {
+        fetchStages();
+      } else {
+        console.warn('unitId prop is undefined; skipping fetchStages');
+      }
       fetchTasks();
     });
 
@@ -614,10 +666,7 @@ input, select {
 .animate-fade-in-up {
   animation: fade-in-up 0.35s cubic-bezier(.4,0,.2,1);
 }
-</style>
 
-/* ...existing code... */
-<style scoped>
 /* Layout base */
 body, .max-w-7xl {
   background: #f7f8fa;
@@ -849,7 +898,6 @@ svg {
   font-size: 0.97rem;
   font-weight: 500;
   fill: #23263a;
-  alignment-baseline: middle;
   dominant-baseline: middle;
   letter-spacing: 0.01em;
 }
